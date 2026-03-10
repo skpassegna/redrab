@@ -3,16 +3,16 @@
 # Secure password generation and injection into .env and redis/users.acl
 # Sourced by setup.sh — do not execute directly
 #
-# Password policy: alphanumeric only [A-Za-z0-9], 32 characters
+# Password policy: alphanumeric only [A-Za-z0-9], 10 characters
 # Rationale: special characters cause parsing issues in .env files,
 # Redis ACL inline format, and AMQP URI percent-encoding.
 
 # ── Generation ─────────────────────────────────────────────────────────────────
 
-# Generate a single secure alphanumeric password (32 chars)
+# Generate a single secure alphanumeric password (10 chars)
 # Uses /dev/urandom filtered through tr — works on macOS and Linux
 passwords::generate() {
-  LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32
+  LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 10
 }
 
 # ── Main entry point ───────────────────────────────────────────────────────────
@@ -50,7 +50,7 @@ passwords::setup() {
   # redis_exporter uses the appuser password
   local pw_redis_exporter="${pw_redis_app}"
 
-  print_ok "All passwords generated (32-char alphanumeric)"
+  print_ok "All passwords generated (10-char alphanumeric)"
 
   # ── Inject into .env ────────────────────────────────────────────────────────
   passwords::_set_env "REDIS_PASSWORD"           "${pw_redis_admin}"    "${env_file}"

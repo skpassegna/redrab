@@ -74,7 +74,7 @@ function Write-Fatal([string]$Text) {
 }
 
 # ── Password generation ────────────────────────────────────────────────────────
-# Alphanumeric only [A-Za-z0-9], 32 characters
+# Alphanumeric only [A-Za-z0-9], 10 characters
 # Uses RNGCryptoServiceProvider for cryptographically secure output
 
 function New-SecurePassword {
@@ -85,7 +85,7 @@ function New-SecurePassword {
 
     $result = [System.Text.StringBuilder]::new()
     foreach ($b in $bytes) {
-        if ($result.Length -ge 32) { break }
+        if ($result.Length -ge 10) { break }
         $index = $b % $chars.Length
         # Reject bytes that would cause bias (bias zone: 256 % 62 = 6 bytes at top)
         if ($b -lt (256 - (256 % $chars.Length))) {
@@ -94,7 +94,7 @@ function New-SecurePassword {
     }
 
     # Fallback: if we didn't get enough chars (very unlikely), recurse
-    if ($result.Length -lt 32) {
+    if ($result.Length -lt 10) {
         return New-SecurePassword
     }
 
@@ -160,7 +160,7 @@ function Invoke-PasswordSetup {
     $PwGrafana       = New-SecurePassword
     $PwExporter      = $PwRedisApp   # exporter uses appuser credentials
 
-    Write-Ok "All passwords generated (32-char alphanumeric)"
+    Write-Ok "All passwords generated (10-char alphanumeric)"
 
     # Inject into .env
     Set-EnvValue "REDIS_PASSWORD"          $PwRedisAdmin  $envFile
