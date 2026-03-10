@@ -1,0 +1,37 @@
+# ============================================================
+#  dashboards.yml — Grafana dashboard provider (provisioning)
+#  Source : grafana.com/tutorials/provision-dashboards-and-data-sources
+# ============================================================
+#
+#  Les dashboards JSON sont à placer dans :
+#    ./grafana/provisioning/dashboards/*.json
+#
+#  IDs Grafana à télécharger manuellement :
+#    Redis     → 763  (Redis Dashboard for Prometheus redis_exporter 1.x)
+#    RabbitMQ  → 10991 (RabbitMQ-Overview — officiel team RabbitMQ)
+#
+#  Comment récupérer les JSON :
+#    curl -o grafana/provisioning/dashboards/redis.json \
+#      "https://grafana.com/api/dashboards/763/revisions/latest/download"
+#    curl -o grafana/provisioning/dashboards/rabbitmq-overview.json \
+#      "https://grafana.com/api/dashboards/10991/revisions/latest/download"
+#
+#  ⚠ Remplacer ensuite dans le JSON :
+#    "${DS_PROMETHEUS}" → "prometheus-ds"  (correspond à l'uid datasource)
+#    Commande :
+#      sed -i 's/\${DS_PROMETHEUS}/prometheus-ds/g' grafana/provisioning/dashboards/*.json
+# ============================================================
+
+apiVersion: 1
+
+providers:
+  - name: "Redis & RabbitMQ Dashboards"
+    orgId: 1
+    folder: "Infrastructure"
+    folderUid: "infra-monitoring"
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards

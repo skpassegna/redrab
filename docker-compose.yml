@@ -1,0 +1,119 @@
+# ============================================================
+#  PRODUCTION DOCKER COMPOSE — Redis + RabbitMQ (infra)
+#  Session Date : 2026-03-10 | Sources vérifiées ≥ 2025-04-02
+# ============================================================
+# macOS Docker Desktop : aucun prérequis host
+# Linux/VPS uniquement :
+#   echo "vm.overcommit_memory = 1" | sudo tee /etc/sysctl.d/99-redis.conf
+#   sudo sysctl -p /etc/sysctl.d/99-redis.conf
+# Démarrage complet :
+#   docker compose -f docker-compose.yml -f docker-compose.monitoring.yml up -d
+# ============================================================
+
+services:
+
+  # ────────────────────────────────────────────
+  #  REDIS  (v7 Alpine)
+  # ────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    hostname: redis-server
+    restart: unless-stopped
+    command: redis-server /usr/local/etc/redis/redis.conf
+    ports:
+      - "${REDIS_HOST_PORT:-127.0.0.1:6379}:6379"
+    volumes:
+      - redis_data:/data
+      - ./redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+      - ./redis/users.acl:/usr/local/etc/redis/users.acl:ro
+    healthcheck:
+      # redis-cli ping sans auth retourne "NOAUTH" si Redis tourne et exige une auth
+      # On accepte PONG (pas d'auth) ET NOAUTH (ACL active = Redis UP) comme états sains
+      # Évite le problème d'injection de credentials dans l'exec form du healthcheck
+      test: ["CMD-SHELL", "redis-cli ping 2>&1 | grep -qE 'PONG|NOAUTH'"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s  # AOF loading peut prendre du temps
+    deploy:
+      resources:
+        limits:
+          memory: ${REDIS_MEM_LIMIT:-768M}
+          cpus: "1.0"
+        reservations:
+          memory: 256M
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    networks:
+      - infra-backend
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ────────────────────────────────────────────
+  #  RABBITMQ  (v4 management)
+  # ────────────────────────────────────────────
+  rabbitmq:
+    image: rabbitmq:4-management
+    container_name: rabbitmq
+    hostname: rabbitmq-server          # CRITIQUE — hostname fixe pour la persistance
+    restart: unless-stopped
+    ports:
+      - "${RABBITMQ_HOST_PORT:-127.0.0.1:5672}:5672"
+      - "${RABBITMQ_MGMT_PORT:-127.0.0.1:15672}:15672"
+      - "${RABBITMQ_PROM_PORT:-127.0.0.1:15692}:15692"
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-admin}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD must be set}
+      RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_VHOST:-/}
+      RABBITMQ_NODENAME: rabbit@rabbitmq-server
+      # RABBITMQ_VM_MEMORY_HIGH_WATERMARK retiré — déprécié en RabbitMQ 4.x
+      # La valeur est définie via rabbitmq.conf → vm_memory_high_watermark.relative
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+      - rabbitmq_log:/var/log/rabbitmq
+      - ./rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+      - ./rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          memory: ${RABBITMQ_MEM_LIMIT:-2G}
+          cpus: "2.0"
+        reservations:
+          memory: 512M
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    networks:
+      - infra-backend
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+
+volumes:
+  redis_data:
+    driver: local
+  rabbitmq_data:
+    driver: local
+  rabbitmq_log:
+    driver: local
+
+networks:
+  infra-backend:
+    driver: bridge
+    name: infra-backend

@@ -1,0 +1,2 @@
+%% Plugins RabbitMQ activés
+[rabbitmq_management, rabbitmq_prometheus].
