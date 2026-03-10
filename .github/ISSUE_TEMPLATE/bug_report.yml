@@ -1,0 +1,72 @@
+name: Bug Report
+description: Something doesn't start, a command fails, or a config is broken
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report an issue.
+        **Never include real passwords or secrets — use `REDACTED` instead.**
+
+  - type: dropdown
+    id: service
+    attributes:
+      label: Affected service
+      options:
+        - Redis
+        - RabbitMQ
+        - redis_exporter
+        - RedisInsight
+        - RabbitScout
+        - Prometheus
+        - Grafana
+        - Docker Compose (general)
+        - Documentation
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Describe the bug clearly. What did you expect vs what actually happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: |
+        Paste the relevant log output here.
+        ```bash
+        docker compose logs <service-name>
+        ```
+      render: shell
+
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      description: |
+        Please fill in the following:
+      value: |
+        - OS:
+        - Docker version (`docker --version`):
+        - Docker Compose version (`docker compose version`):
+        - Architecture (x86_64 / ARM64 / Apple Silicon):
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps to reproduce the issue
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true

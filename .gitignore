@@ -2,41 +2,42 @@
 #  .gitignore — Redis + RabbitMQ Stack
 # ============================================================
 
-# ── Secrets — NE JAMAIS COMMITER ──────────────────────────
+# ── Secrets — NEVER COMMIT ─────────────────────────────────
 .env
+.env.backup.*
 *.key
 *.pem
 *.crt
 *.p12
 
-# ── Dashboards Grafana téléchargés (binaires régénérables) ─
+# ── Downloaded Grafana dashboards (regeneratable) ──────────
 grafana/provisioning/dashboards/*.json
 
-# ── Données locales Docker (si montées en bind mount) ──────
+# ── Local Docker data (if bind-mounted) ────────────────────
 data/
 volumes/
 
-# ── Backups locaux ─────────────────────────────────────────
+# ── Local backups ───────────────────────────────────────────
 *.rdb
 backup-*.rdb
 backup-*.tar.gz
 
-# ── Logs ───────────────────────────────────────────────────
+# ── Logs ────────────────────────────────────────────────────
 *.log
 logs/
 
-# ── macOS ──────────────────────────────────────────────────
+# ── macOS ───────────────────────────────────────────────────
 .DS_Store
 .AppleDouble
 .LSOverride
 ._*
 
-# ── Éditeurs ───────────────────────────────────────────────
+# ── Editors ─────────────────────────────────────────────────
 .idea/
 .vscode/
 *.swp
 *.swo
 *~
 
-# ── Node (si des scripts JS sont ajoutés plus tard) ────────
+# ── Node (if JS scripts are added later) ────────────────────
 node_modules/
