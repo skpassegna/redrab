@@ -1,114 +1,172 @@
 #!/usr/bin/env bash
 # scripts/lib/passwords.sh
-# Secure password generation and injection into .env and redis/users.acl
+# Password logic: detect state, generate, and apply to config files
 # Sourced by setup.sh — do not execute directly
 #
-# Password policy: alphanumeric only [A-Za-z0-9], 10 characters
-# Rationale: special characters cause parsing issues in .env files,
+# Password policy: alphanumeric [A-Za-z0-9], 32 chars
+# No special characters — avoids parsing issues in .env files,
 # Redis ACL inline format, and AMQP URI percent-encoding.
 
-# ── Generation ─────────────────────────────────────────────────────────────────
-
-# Generate a single secure alphanumeric password (10 chars)
-# Uses /dev/urandom filtered through tr — works on macOS and Linux
-passwords::generate() {
-  LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 10
-}
+readonly PLACEHOLDER_PATTERN="CHANGE_ME"
 
 # ── Main entry point ───────────────────────────────────────────────────────────
+# Decides whether to generate new passwords or verify existing ones
 
 passwords::setup() {
-  print_section "Generating and applying passwords"
+  print_section "Secrets configuration"
 
   local env_file="${PROJECT_ROOT}/.env"
   local env_example="${PROJECT_ROOT}/.env.example"
-  local acl_file="${PROJECT_ROOT}/redis/users.acl"
 
-  # ── Ensure .env exists ──────────────────────────────────────────────────────
+  # ── Step 1: ensure .env exists ─────────────────────────────────────────────
   if [ ! -f "${env_file}" ]; then
-    if [ -f "${env_example}" ]; then
-      cp "${env_example}" "${env_file}"
-      print_ok ".env created from .env.example"
-    else
-      print_fatal ".env.example not found — cannot create .env"
+    if [ ! -f "${env_example}" ]; then
+      print_fatal ".env.example not found — cannot continue"
     fi
+    cp "${env_example}" "${env_file}"
+    print_ok ".env created from .env.example"
+    # Fresh copy always has CHANGE_ME placeholders → fall through to generate
   else
-    print_info ".env already exists — passwords will be regenerated"
-    # Backup existing .env
-    local backup="${env_file}.backup.$(date +%Y%m%d-%H%M%S)"
-    cp "${env_file}" "${backup}"
-    print_ok "Existing .env backed up to: $(basename "${backup}")"
+    print_ok ".env found"
   fi
 
-  # ── Generate passwords ──────────────────────────────────────────────────────
-  local pw_redis_admin;    pw_redis_admin=$(passwords::generate)
-  local pw_redis_app;      pw_redis_app=$(passwords::generate)
-  local pw_redis_readonly; pw_redis_readonly=$(passwords::generate)
-  local pw_rabbitmq;       pw_rabbitmq=$(passwords::generate)
-  local pw_grafana;        pw_grafana=$(passwords::generate)
+  # ── Step 2: check if placeholders are still present ────────────────────────
+  if passwords::_has_placeholders "${env_file}"; then
+    print_warn "Placeholder passwords detected in .env — generating new passwords"
+    passwords::_generate_and_apply "${env_file}"
+  else
+    print_ok "Passwords already set in .env"
+    passwords::_verify_sync "${env_file}"
+  fi
+}
 
-  # redis_exporter uses the appuser password
-  local pw_redis_exporter="${pw_redis_app}"
+# ── Check for CHANGE_ME placeholders in password fields ───────────────────────
 
-  print_ok "All passwords generated (10-char alphanumeric)"
+passwords::_has_placeholders() {
+  local file="$1"
+  grep -qE "^(REDIS_PASSWORD|REDIS_EXPORTER_PASSWORD|RABBITMQ_PASSWORD|GF_ADMIN_PASSWORD)=.*${PLACEHOLDER_PATTERN}" "${file}"
+}
 
-  # ── Inject into .env ────────────────────────────────────────────────────────
-  passwords::_set_env "REDIS_PASSWORD"           "${pw_redis_admin}"    "${env_file}"
-  passwords::_set_env "REDIS_EXPORTER_PASSWORD"  "${pw_redis_exporter}" "${env_file}"
-  passwords::_set_env "RABBITMQ_PASSWORD"        "${pw_rabbitmq}"       "${env_file}"
-  passwords::_set_env "GF_ADMIN_PASSWORD"        "${pw_grafana}"        "${env_file}"
+# ── Generate new passwords and apply to all config files ──────────────────────
 
+passwords::_generate_and_apply() {
+  local env_file="$1"
+
+  local pw_redis_admin    ; pw_redis_admin=$(passwords::_generate)
+  local pw_redis_app      ; pw_redis_app=$(passwords::_generate)
+  local pw_redis_readonly ; pw_redis_readonly=$(passwords::_generate)
+  local pw_rabbitmq       ; pw_rabbitmq=$(passwords::_generate)
+  local pw_grafana        ; pw_grafana=$(passwords::_generate)
+
+  print_ok "Passwords generated (32-char alphanumeric)"
+
+  # Apply to .env
+  passwords::_set_env "REDIS_PASSWORD"           "${pw_redis_admin}"  "${env_file}"
+  passwords::_set_env "REDIS_EXPORTER_PASSWORD"  "${pw_redis_app}"    "${env_file}"
+  passwords::_set_env "RABBITMQ_PASSWORD"        "${pw_rabbitmq}"     "${env_file}"
+  passwords::_set_env "GF_ADMIN_PASSWORD"        "${pw_grafana}"      "${env_file}"
   print_ok ".env updated"
 
-  # ── Inject into redis/users.acl ─────────────────────────────────────────────
+  # Apply to redis/users.acl
   passwords::_write_acl \
-    "${acl_file}" \
+    "${PROJECT_ROOT}/redis/users.acl" \
     "${pw_redis_admin}" \
     "${pw_redis_app}" \
     "${pw_redis_readonly}"
-
   print_ok "redis/users.acl updated"
 
-  # ── Print summary ───────────────────────────────────────────────────────────
   passwords::_print_summary \
-    "${pw_redis_admin}" \
-    "${pw_redis_app}" \
-    "${pw_redis_readonly}" \
-    "${pw_rabbitmq}" \
-    "${pw_grafana}"
+    "${pw_redis_admin}" "${pw_redis_app}" "${pw_redis_readonly}" \
+    "${pw_rabbitmq}" "${pw_grafana}"
+}
+
+# ── Verify that users.acl is in sync with .env ────────────────────────────────
+# If the ACL still contains CHANGE_ME but .env has real passwords,
+# the ACL is rewritten to match .env.
+
+passwords::_verify_sync() {
+  local env_file="$1"
+  local acl_file="${PROJECT_ROOT}/redis/users.acl"
+
+  print_section "Verifying file sync"
+
+  if [ ! -f "${acl_file}" ]; then
+    print_error "redis/users.acl not found"
+    return 1
+  fi
+
+  # Read current passwords from .env
+  local pw_admin pw_app pw_exporter
+  pw_admin=$(passwords::_read_env "REDIS_PASSWORD"          "${env_file}")
+  pw_app=$(passwords::_read_env   "REDIS_EXPORTER_PASSWORD" "${env_file}")
+
+  # Check if ACL still has placeholders
+  if grep -q "${PLACEHOLDER_PATTERN}" "${acl_file}"; then
+    print_warn "redis/users.acl has placeholder passwords — syncing with .env"
+
+    local pw_readonly
+    pw_readonly=$(passwords::_generate)  # generate a readonly pw (not in .env)
+
+    passwords::_write_acl "${acl_file}" "${pw_admin}" "${pw_app}" "${pw_readonly}"
+    print_ok "redis/users.acl synced with .env"
+    print_warn "A new readonly password was generated (not stored in .env — for internal use only)"
+  else
+    # Verify appuser password in ACL matches REDIS_EXPORTER_PASSWORD
+    if grep -q "user appuser on >${pw_exporter} " "${acl_file}" 2>/dev/null || \
+       grep -q "user appuser on >${pw_app} "      "${acl_file}" 2>/dev/null; then
+      print_ok "redis/users.acl is in sync with .env"
+    else
+      print_warn "redis/users.acl appuser password may differ from REDIS_EXPORTER_PASSWORD"
+      print_info "If redis_exporter shows WRONGPASS, re-run: ./setup.sh"
+    fi
+
+    if grep -q "user admin on >${pw_admin} " "${acl_file}" 2>/dev/null; then
+      print_ok "redis/users.acl admin password matches REDIS_PASSWORD"
+    else
+      print_warn "redis/users.acl admin password may differ from REDIS_PASSWORD in .env"
+      print_info "Re-run ./setup.sh to regenerate and sync all passwords"
+    fi
+  fi
 }
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
-# Set or replace a KEY=VALUE line in a .env file
-# Usage: passwords::_set_env KEY VALUE /path/to/.env
+passwords::_generate() {
+  LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32
+}
+
+# Read the value of a KEY from a .env file
+passwords::_read_env() {
+  local key="$1"
+  local file="$2"
+  grep "^${key}=" "${file}" | cut -d'=' -f2-
+}
+
+# Set or replace a KEY=VALUE line in a .env file (macOS + Linux compatible)
 passwords::_set_env() {
   local key="$1"
   local value="$2"
   local file="$3"
 
-  if grep -q "^${key}=" "${file}" 2>/dev/null; then
-    # Key exists — replace it (macOS and Linux compatible)
+  if grep -q "^${key}=" "${file}"; then
     if [ "${OS_TYPE}" = "macos" ]; then
       sed -i '' "s|^${key}=.*|${key}=${value}|" "${file}"
     else
       sed -i "s|^${key}=.*|${key}=${value}|" "${file}"
     fi
   else
-    # Key doesn't exist — append it
     echo "${key}=${value}" >> "${file}"
   fi
 }
 
-# Rewrite redis/users.acl with fresh passwords
-# ACL format: no comments allowed — Redis rejects any line not starting with "user"
+# Rewrite redis/users.acl — no comments (Redis rejects them)
 passwords::_write_acl() {
   local file="$1"
   local pw_admin="$2"
   local pw_app="$3"
   local pw_readonly="$4"
 
-  cat > "${file}" << EOF
+  cat > "${file}" <<EOF
 user default off
 user admin on >${pw_admin} ~* &* +@all
 user appuser on >${pw_app} ~* &* +@read +@write +@string +@hash +@list +@set +@sortedset +@pubsub -@dangerous -@admin
@@ -116,7 +174,6 @@ user readonly on >${pw_readonly} ~* &* +@read -@dangerous
 EOF
 }
 
-# Print a summary table of generated credentials
 passwords::_print_summary() {
   local pw_redis_admin="$1"
   local pw_redis_app="$2"
@@ -126,15 +183,15 @@ passwords::_print_summary() {
 
   echo ""
   echo "  ${_BOLD}Generated credentials${_RESET}"
-  echo "  ${_CYAN}────────────────────────────────────────────────────────${_RESET}"
+  echo "  ${_CYAN}──────────────────────────────────────────────────${_RESET}"
   printf "  %-28s %s\n" "Redis admin:"    "${pw_redis_admin}"
   printf "  %-28s %s\n" "Redis appuser:"  "${pw_redis_app}"
   printf "  %-28s %s\n" "Redis readonly:" "${pw_redis_readonly}"
   printf "  %-28s %s\n" "RabbitMQ admin:" "${pw_rabbitmq}"
   printf "  %-28s %s\n" "Grafana admin:"  "${pw_grafana}"
-  echo "  ${_CYAN}────────────────────────────────────────────────────────${_RESET}"
+  echo "  ${_CYAN}──────────────────────────────────────────────────${_RESET}"
   echo ""
-  print_warn "Save these passwords. They are stored in .env and redis/users.acl."
-  print_warn "Never commit .env to version control."
+  print_warn "These are the only time these passwords are displayed."
+  print_warn "They are stored in .env and redis/users.acl — never commit .env."
   echo ""
 }

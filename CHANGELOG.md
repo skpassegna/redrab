@@ -2,6 +2,61 @@
 
 All notable changes to this project are documented here.
 
+
+## [1.2.0] — 2026-03-12
+
+### Added
+
+- `setup.sh` — configuration setup script for macOS and Linux:
+  - Checks if `.env` is present; creates it from `.env.example` if not
+  - Detects placeholder passwords (`CHANGE_ME`) in `.env` — generates new secure
+    passwords if found, verifies file sync if not
+  - Generates alphanumeric 32-character passwords via `/dev/urandom` (no special
+    characters — avoids parsing issues in `.env`, Redis ACL, and AMQP URIs)
+  - Applies passwords to `.env` and rewrites `redis/users.acl` atomically
+  - Downloads missing Grafana dashboards and patches the `${DS_PROMETHEUS}` placeholder
+  - Reports OS-specific kernel notes (informational only — never modifies kernel settings)
+  - Never starts, stops, or restarts containers
+  - Never creates `.env` backups
+  - Modes: `full` (default) · `--passwords` · `--dashboards` · `--help`
+- `setup.ps1` — equivalent setup script for Windows (PowerShell 5.1+):
+  - Same logic as `setup.sh` — placeholder detection, password generation, file sync
+  - Uses `RNGCryptoServiceProvider` for cryptographically secure password generation
+  - Writes `redis/users.acl` with Unix LF line endings (required by Redis)
+  - Writes all files as UTF-8 without BOM
+  - Modes: `full` (default) · `passwords` · `dashboards` · `--help`
+- `setup.bat` — Windows entry point; detects `pwsh` or `powershell`, invokes `setup.ps1`
+- `validate.sh` — read-only stack validation for macOS and Linux:
+  - `--config`: checks `.env` for placeholders, `users.acl` sync, dashboard presence
+    (no running stack required)
+  - `--runtime`: checks container status, probes Redis / RabbitMQ / Prometheus /
+    redis_exporter health, prints web interface URLs
+  - Never modifies any file or touches any container
+- `validate.ps1` — equivalent validation script for Windows (PowerShell 5.1+)
+- `validate.bat` — Windows entry point for `validate.ps1`
+- `scripts/lib/colors.sh` — terminal color helpers sourced by shell scripts
+- `scripts/lib/os.sh` — OS and architecture detection, Docker context, kernel notes
+- `scripts/lib/passwords.sh` — password generation, `.env` injection, ACL rewrite
+- `scripts/lib/dashboards.sh` — Grafana dashboard download and datasource patch
+- `scripts/lib/validate.sh` — pre-flight checks, config validation, runtime health probes
+- `CONTRIBUTING.md` — contribution guide: bug reports, feature requests, PR process,
+  style guidelines for configs, ACL files, docs, and commit messages
+- `SECURITY.md` — vulnerability reporting process, security defaults documented
+  (Redis default user disabled, ports on 127.0.0.1, no hardcoded secrets),
+  known limitations (plaintext `.env`, no TLS by default)
+- `CHANGELOG.md` — this file
+- `.github/ISSUE_TEMPLATE/bug_report.yml` — structured bug report form with service
+  dropdown, log field, environment info, and steps to reproduce
+- `.github/ISSUE_TEMPLATE/feature_request.yml` — structured feature request form
+- `.github/PULL_REQUEST_TEMPLATE.md` — PR checklist with stack start, health check,
+  log verification, dual README sync, and security review items
+
+### Changed
+
+- `.gitignore` — translated to English; added `.env.backup.*` to prevent accidental
+  commit of backup files
+
+
 ## [1.1.0] — 2026-03-10
 
 ### Fixed
@@ -31,6 +86,7 @@ All notable changes to this project are documented here.
   `vm.overcommit_memory` and Transparent Huge Pages settings are not needed on
   Docker Desktop (handled by the internal LinuxKit VM)
 - Troubleshooting entry for the `network infra-backend could not be found` error
+
 
 ## [1.0.0] — 2026-03-10
 

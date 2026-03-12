@@ -70,7 +70,7 @@ services:
       - "--storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-15d}"
       - "--web.console.libraries=/etc/prometheus/console_libraries"
       - "--web.console.templates=/etc/prometheus/consoles"
-      - "--web.enable-lifecycle"             # permet reload à chaud
+      - "--web.enable-lifecycle"
     ports:
       - "127.0.0.1:9090:9090"
     volumes:
@@ -105,7 +105,7 @@ services:
       GF_LOG_LEVEL: warn
       GF_FEATURE_TOGGLES_ENABLE: ""
     ports:
-      - "127.0.0.1:3002:3000"     # 3002 → évite conflit avec NestJS :3000 / :3001
+      - "127.0.0.1:3002:3000" 
     volumes:
       - grafana_data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
@@ -188,8 +188,6 @@ volumes:
 # ════════════════════════════════════════
 networks:
   infra-backend:
-    # Pas de external: true — défini dans docker-compose.yml
-    # Le merge -f crée le réseau automatiquement, pas besoin qu'il soit pré-existant
     name: infra-backend
   monitoring:
     driver: bridge

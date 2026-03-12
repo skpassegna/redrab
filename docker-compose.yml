@@ -28,9 +28,6 @@ services:
       - ./redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
       - ./redis/users.acl:/usr/local/etc/redis/users.acl:ro
     healthcheck:
-      # redis-cli ping sans auth retourne "NOAUTH" si Redis tourne et exige une auth
-      # On accepte PONG (pas d'auth) ET NOAUTH (ACL active = Redis UP) comme états sains
-      # Évite le problème d'injection de credentials dans l'exec form du healthcheck
       test: ["CMD-SHELL", "redis-cli ping 2>&1 | grep -qE 'PONG|NOAUTH'"]
       interval: 15s
       timeout: 5s
@@ -61,7 +58,7 @@ services:
   rabbitmq:
     image: rabbitmq:4-management
     container_name: rabbitmq
-    hostname: rabbitmq-server          # CRITIQUE — hostname fixe pour la persistance
+    hostname: rabbitmq-server
     restart: unless-stopped
     ports:
       - "${RABBITMQ_HOST_PORT:-127.0.0.1:5672}:5672"
@@ -72,8 +69,6 @@ services:
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD must be set}
       RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_VHOST:-/}
       RABBITMQ_NODENAME: rabbit@rabbitmq-server
-      # RABBITMQ_VM_MEMORY_HIGH_WATERMARK retiré — déprécié en RabbitMQ 4.x
-      # La valeur est définie via rabbitmq.conf → vm_memory_high_watermark.relative
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
       - rabbitmq_log:/var/log/rabbitmq

@@ -1,6 +1,6 @@
 @echo off
-:: setup.bat — Windows entry point for setup.ps1
-:: Usage: setup.bat [--passwords | --dashboards | --help]
+:: validate.bat — Windows entry point for validate.ps1
+:: Usage: validate.bat [--config | --runtime | --help]
 
 setlocal
 
@@ -18,5 +18,5 @@ if %ERRORLEVEL% EQU 0 (
     )
 )
 
-%PS_EXE% -NoProfile -ExecutionPolicy Bypass -File "%~dp0setup.ps1" %*
+%PS_EXE% -NoProfile -ExecutionPolicy Bypass -File "%~dp0validate.ps1" %*
 exit /b %ERRORLEVEL%
